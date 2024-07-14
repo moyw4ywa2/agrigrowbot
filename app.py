@@ -1,13 +1,25 @@
-from flask import Flask, render_template, request, redirect, jsonify
-import requests  # Add requests library for making HTTP requests
+from flask import Flask, render_template, request, redirect, url_for
 from agric_bot import AgricultureBot
 from gemini_api import GeminiAPI
+import requests
 
 app = Flask(__name__)
 
 # Initialize the Agriculture Bot and Agriculture API
-agriculture_bot = AgricultureBot()
-gemini_api = GeminiAPI()
+agriculture_bot = None  # Initialize as None for lazy loading
+gemini_api = None  # Initialize as None for lazy loading
+
+def get_agriculture_bot():
+    global agriculture_bot
+    if agriculture_bot is None:
+        agriculture_bot = AgricultureBot()
+    return agriculture_bot
+
+def get_gemini_api():
+    global gemini_api
+    if gemini_api is None:
+        gemini_api = GeminiAPI()
+    return gemini_api
 
 @app.route('/')
 def index():
@@ -29,35 +41,28 @@ def main_app():
 
 @app.route('/subscribe', methods=['POST'])
 def subscribe():
-    if request.method == 'POST':
-        email = request.form['email']
-        if email:
-            # Send the email data to Zapier via webhook
-            zapier_webhook_url = 'https://hooks.zapier.com/hooks/catch/19332064/223pmxy/'
-            data = {'email': email}
-            response = requests.post(zapier_webhook_url, json=data)
-
-            # Optionally handle response from Zapier if needed
-            if response.status_code == 200:
-                return "Subscribed successfully!"
-            else:
-                return "Failed to subscribe. Please try again later."
-
+    email = request.form['email']
+    if email:
+        zapier_webhook_url = "https://hooks.zapier.com/hooks/catch/19332064/223pmxy/"
+        data = {'email': email}
+        response = requests.post(zapier_webhook_url, json=data)
+        if response.status_code == 200:
+            return redirect(url_for('index'))
         else:
-            return "Please enter a valid email address."
+            return "Failed to subscribe. Please try again."
+    else:
+        return "Please enter a valid email address."
 
 def get_response(user_input):
-    agriculture_advice = agriculture_bot.get_agricultural_advice(user_input)
+    agriculture_advice = get_agriculture_bot().get_agricultural_advice(user_input)
     
     try:
-        agriculture_response = gemini_api.generate_response(user_input)
-        response_text = agriculture_response.text  # Attempt to access text attribute
+        agriculture_response = get_gemini_api().generate_response(user_input)
     except Exception as e:
-        print(f"Error accessing response text: {str(e)}")
-        agriculture_response = None  # Handle the case where response is invalid or empty
-        response_text = None
-    
-    return agriculture_advice, response_text
+        print(f"Error accessing response: {str(e)}")
+        agriculture_response = "There was an error processing your request. Please try again."
+
+    return agriculture_advice, agriculture_response
 
 if __name__ == '__main__':
     app.run(debug=True)
